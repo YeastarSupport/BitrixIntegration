@@ -15,7 +15,7 @@ import os
 #Raising the call card (lead/contact/company) at in/outbound call
 #Raising a card when making a direct call from an IP phone (if you do not call by clicking on the phone number in CRM, but simply dial the number on the phone)
 #Processing group call scenarios (if a call is made to a group of internal numbers, then the call card is raised for all users of this group, but after one of the users picks up the phone, the card is minimized for all the others)
-#Processing call transfer scenarios (if a call is forwarded, the card of the call is minimized from the user from whom the call left and appears to the user to whom the call is forwarded)
+
 
 list_PBX_callid = []
 list_PBX_callernum = []
@@ -48,8 +48,10 @@ bitrix_basic_url = ''
 api_username = ''
 api_password = ''
 
+VERSION = '1.0.0'
+
 #--------------------------------------------------------------------------
-#                        PBX API
+#                        API to connect to the PBX 
 #--------------------------------------------------------------------------
 def post_request(url,data,print_r):
     if data == '':
@@ -140,7 +142,7 @@ def query_calldetails(callid):
     return r.text
 
 #--------------------------------------------------------------------------
-#                        Bitrix相关 API
+#                        API to update Bitrix call status
 #--------------------------------------------------------------------------
 def bitrix_getcalltype(typeofcall):
 #Type of call:
@@ -208,7 +210,6 @@ def bitrix_telephonycallfinish(callee_num,callid,userid,duration,reason):
     print('|Bitrix call| finish',callee_num)
     #bitrix_callid = list_Bitrix_callid[get_callindex(callee_num,callid)]
 
-
     index = get_callindex(callee_num,callid)
     if index != -1:
         bitrix_callid = '&' + 'CALL_ID=' + list_Bitrix_callid[index]
@@ -252,7 +253,7 @@ def bitrix_userget():
 
 
 #--------------------------------------------------------------------------
-#                        通话处理 API
+#                        API handle call status 
 #--------------------------------------------------------------------------
 
 def append_data_tolist(callid,caller_num,callee_num,bitrix_callid,bitrix_callstatus):
@@ -265,13 +266,12 @@ def append_data_tolist(callid,caller_num,callee_num,bitrix_callid,bitrix_callsta
     list_Bitrix_call_status.append(bitrix_callstatus)
 
 
-#根据被叫号码查找index
 def get_callindex(callee_num,callid):
     n = 0
     
     for num in list_PBX_calleenum:
-        if num == callee_num: #先匹配被叫号码
-            if callid == list_PBX_callid[n]:#再匹配callid
+        if num == callee_num: 
+            if callid == list_PBX_callid[n]:
                 return n 
         n += 1
     return -1
@@ -280,8 +280,8 @@ def get_callindex_by_callernum(caller_num,callid):
     n = 0
     
     for num in list_PBX_callernum:
-        if num == caller_num: #先匹配被叫号码
-            if callid == list_PBX_callid[n]:#再匹配callid
+        if num == caller_num: 
+            if callid == list_PBX_callid[n]:
                 return n 
         n += 1
     return -1
@@ -314,7 +314,6 @@ def inbound_call_ring(callid,caller_num,callee_num):
     bitrix_callid = ''
     userid = ''
 
-    #如果被叫号码和callid都匹配才算是同一路通话
     index = get_callindex(callee_num,callid)
     if index > -1:
         print('|inbound call check| call exist and status is ', list_callstatus[list_Bitrix_call_status[index]])
@@ -322,7 +321,6 @@ def inbound_call_ring(callid,caller_num,callee_num):
 
     print('|inbound call status| ringing, callee number: '+ callee_num +' callid: ' + callid)
 
-    #根据被叫号码获取Bitrix对应号码的userid用于弹屏
     userid = bitrix_get_userid(callee_num)
 
     #调用bitrix popup
@@ -330,10 +328,9 @@ def inbound_call_ring(callid,caller_num,callee_num):
     bitrix_callid = register_call_json['result']['CALL_ID']
     #CRM_ENTITY_ID = register_call_json['result']['CRM_ENTITY_ID']
 
-    #把通话数据存入list，根据index绑定PBX和bitrix通话信息
     append_data_tolist(callid,caller_num,callee_num,bitrix_callid, B_CALL_STATUS_RING)
 
-#通话建立
+
 def inbound_call_answered(callee_num,callid):
 
     index = get_callindex(callee_num,callid)
@@ -350,12 +347,10 @@ def inbound_call_answered(callee_num,callid):
 
     userid = bitrix_get_userid(callee_num)
 
-    #更新bitrix通话状态
     bitrix_telephonycallshow(callee_num,callid,userid)
 
-    #清理其他同callid的分机状态
     clear_other_calls(list_PBX_callid[index], callee_num)
-#通话结束
+
 
 def inbound_call_end(callee_num,callid, need_report, call_duration,reason):
 
@@ -367,7 +362,6 @@ def inbound_call_end(callee_num,callid, need_report, call_duration,reason):
         print('|call check| call already ended ')
         if need_report:
             userid = bitrix_get_userid(callee_num)
-            #更新bitrix通话状态 通话建立后的上报需要等到cdr事件以后才能获取到通话时间和失败原因
             bitrix_telephonycallfinish(callee_num,callid,userid,call_duration,reason)
         return 0
     
@@ -375,7 +369,6 @@ def inbound_call_end(callee_num,callid, need_report, call_duration,reason):
     
     if need_report:
         userid = bitrix_get_userid(callee_num)
-        #更新bitrix通话状态 通话建立后的上报需要等到cdr事件以后才能获取到通话时间和失败原因
         bitrix_telephonycallfinish(callee_num,callid,userid,call_duration,reason)
 
     list_Bitrix_call_status[index] = B_CALL_STATUS_END
@@ -384,7 +377,6 @@ def outbound_call_alert(callid,caller_num,callee_num):
     bitrix_callid = ''
     userid = ''
 
-    #如果被叫号码和callid都匹配才算是同一路通话
     index = get_callindex_by_callernum(caller_num,callid)
     if index > -1:
         print('|outbound call check| call exist and status is ', list_callstatus[list_Bitrix_call_status[index]])
@@ -392,15 +384,13 @@ def outbound_call_alert(callid,caller_num,callee_num):
 
     print('|outbound call status| ringing, caller number: '+ caller_num +' callid: ' + callid)
 
-    #根据主叫号码获取Bitrix对应号码的userid用于弹屏
     userid = bitrix_get_userid(caller_num)
 
-    #调用bitrix popup
     register_call_json = bitrix_telephonycallregister(callee_num,'outbound',userid)
     bitrix_callid = register_call_json['result']['CALL_ID']
     #CRM_ENTITY_ID = register_call_json['result']['CRM_ENTITY_ID']
 
-    #把通话数据存入list，根据index绑定PBX和bitrix通话信息
+    #save the call info to list，bind the PBX and bitrix information according to the index
     append_data_tolist(callid,caller_num,callee_num,bitrix_callid, B_CALL_STATUS_RING)
 
 def outbound_call_answered(caller_num,callee_num,callid):
@@ -418,7 +408,6 @@ def outbound_call_answered(caller_num,callee_num,callid):
 
     userid = bitrix_get_userid(caller_num)
 
-    #更新bitrix通话状态
     bitrix_telephonycallshow(callee_num,callid,userid)
 
 def outbound_call_end(callee_num,caller_num,callid, need_report, call_duration,reason):
@@ -431,7 +420,6 @@ def outbound_call_end(callee_num,caller_num,callid, need_report, call_duration,r
         print('|call check| call already ended ')
         if need_report:
             userid = bitrix_get_userid(caller_num)
-            #更新bitrix通话状态 通话建立后的上报需要等到cdr事件以后才能获取到通话时间和失败原因
             bitrix_telephonycallfinish(callee_num,callid,userid,call_duration,reason)
         return 0
     
@@ -439,7 +427,6 @@ def outbound_call_end(callee_num,caller_num,callid, need_report, call_duration,r
     
     if need_report:
         userid = bitrix_get_userid(caller_num)
-        #更新bitrix通话状态 通话建立后的上报需要等到cdr事件以后才能获取到通话时间和失败原因
         bitrix_telephonycallfinish(callee_num,callid,userid,call_duration,reason)
 
     list_Bitrix_call_status[index] = B_CALL_STATUS_END
@@ -448,7 +435,7 @@ def inbound_call_hide(callee_num,callid):
 
     bitrix_telephonycallhide(callee_num,callid)
 
-#响铃组场景，一个分机接起 要结束其他分机的通话
+#in RingGroup，end other calls when one extension answers
 def clear_other_calls(callid,callee_num):
 
     index = 0
@@ -456,7 +443,7 @@ def clear_other_calls(callid,callee_num):
 
     print('|call status| end other calls for callid: ',callid)
 
-    #遍历找出同callid的其他分机
+    #find other calls with the same callid
     for check_callid in list_PBX_callid:
         if callid == check_callid:
             if callee_num != list_PBX_calleenum[index]:
@@ -472,13 +459,12 @@ def report_inbound_cancel_calls(callid):
     print('|Bitrix call| report cancel calls')
 
     n = 0
-    #根据callid找到通话和被叫号码进行上报
     for call_id in list_PBX_callid:
         if call_id == callid: 
             bitrix_telephonycallfinish(list_PBX_calleenum[n],callid,'0','NO ANSWER')
         n += 1
     return -1
-    #通话没有建立
+
 
 def delete_calls_bycallid(callid):
     print('|call clear| callid: ',callid)
@@ -496,7 +482,6 @@ def check_callee_entity(callee_num):
     else:
         return False
 
-#inbound来电处理
 def inbound_call_handler(callid,inbound_data,ext_data):
     #print(inbound_data)
     #print(ext_data)
@@ -515,17 +500,17 @@ def inbound_call_handler(callid,inbound_data,ext_data):
         ext_member_status = ext_data['memberstatus']
         ext_number = ext_data['number']
 
-    #检查被叫号码是否是CRM绑定的号码，不是则不用上报
+    ##check if the callee number is the CRM user
     if check_callee_entity(ext_number) == False:
         print('|Bitrix user| not a bitrix user', ext_number)
         return
 
-    #通话结束状态 任意一方"memberstatus":"BYE"，这里只需要把通话状态设置成end
+    #set call status to end when any of the members receive BYE, "memberstatus":"BYE"
     if inbound_member_status == "BYE" or ext_member_status == "BYE":
         inbound_call_end(ext_number,callid, 0,'0','')
-    elif ext_member_status == "RING":#callee处于响铃状态"memberstatus":"RING"
+    elif ext_member_status == "RING":#callee is in ringing status, "memberstatus":"RING"
         inbound_call_ring(callid,inbound_caller_num,ext_number)
-    elif ext_member_status == "ANSWER":#被叫分机接听来电"memberstatus":"ANSWER"
+    elif ext_member_status == "ANSWER":#callee answers,"memberstatus":"ANSWER"
         inbound_call_answered(ext_number,callid)
         
 
@@ -538,13 +523,12 @@ def handle_inbound_call_events(list_members,callid):
 
     print('|Bitrix call| handle inbound calls')
 
-    #遍历字典成员
     while counter < len(list_members):
-        #处理inbound来电
+
         if list_members[counter].get('inbound'):
             inbound_member = list_members[counter]
             inbound_data = inbound_member['inbound']
-        elif list_members[counter].get('ext'):#获取每个ext member信息进行上报
+        elif list_members[counter].get('ext'):
             ext_member = list_members[counter]
             ext_data = ext_member['ext']
 
@@ -568,7 +552,7 @@ def outbound_call_handler(callid,outbound_data,ext_data):
         ext_member_status = ext_data['memberstatus']
         ext_number = ext_data['number']
     
-    #检查主叫号码是否是CRM绑定的号码，不是则不用上报
+    #check if the caller number is the CRM user
     if check_callee_entity(ext_number) == False:
         print('|Bitrix user| not a bitrix user ', ext_number)
         return
@@ -588,13 +572,13 @@ def handle_outbound_call_events(list_members,callid):
     counter = 0
 
     print('|Bitrix call| handle outbound calls')
-    #遍历字典成员
+
     while counter < len(list_members):
-        #处理inbound来电
+        
         if list_members[counter].get('outbound'):
             outbound_member = list_members[counter]
             outbound_data = outbound_member['outbound']
-        elif list_members[counter].get('ext'):#获取每个ext member信息进行上报
+        elif list_members[counter].get('ext'):
             ext_member = list_members[counter]
             ext_data = ext_member['ext']
 
@@ -607,7 +591,6 @@ def handle_inbound_newcdr_events(json_data):
     talk_duration = json_data['talkduraction']
     call_reason = json_data['status']
     
-    #被叫号码 '4002'  '(4002)'
     #"callto":"6200(4002)"
     #"callto": "6200"
     if '(' in callee_num and ')' in callee_num:
@@ -620,7 +603,6 @@ def handle_inbound_newcdr_events(json_data):
     print('|inbound new cdr| call reason: ',call_reason)
     print('|inbound new cdr| put call id to queue: ',callid)
 
-    #进入VM不上报
     if call_reason == 'VOICEMAIL':
         return
     
@@ -663,7 +645,6 @@ def check_event_type(list_members):
         counter+=1
 
 def api_events_handle(body):
-    #通话事件处理
     callid = ''
     list_members = ''
 
@@ -778,7 +759,7 @@ def delete_end_calls():
         delete_calls_bycallid(callid)
         clear_call_queue.task_done()
 
-        #存在PBX没有发newcdr的情况，主动查询通话是否存在 不存在自行删除
+        #When missing NEWCDR event，query and delete the terminated calls
         delete_noneexist_calls()
     
 def start_call_clear():
@@ -812,8 +793,8 @@ def read_local_config():
                 continue
 
             if key == 'pbx_url' and value != '':
-                pbx_url = value.strip('\n')#去除换行
-                pbx_url = pbx_url.strip()#去除空格
+                pbx_url = value.strip('\n')
+                pbx_url = pbx_url.strip()
                 print('read from config pbx_url is: '+ pbx_url)
                 basic_url = pbx_url + '/api/v2.0.0/'
             elif key == 'bitrix_basic_url' and value != '':
@@ -832,30 +813,27 @@ def read_local_config():
 
 if __name__ == '__main__':
 
+    print('Bitrix 24 integration version: ',VERSION)
+
     read_local_config()
-    #API连接
+    
     api_login(api_username,api_password)
 
-    #token刷新线程
+    #token refresh
     #start_keepalive_timer()
 
-    #获取分机信息
-    query_extensionlist()
+    #get extensions from the PBX
+    #query_extensionlist()
 
-    
-    #获取CRM用户信息 根据CRM的internal phone number获取对应的userid
+    #request the users from CRM
     save_crm_userid()
 
-    #读取配置文件手动绑定CRM用户和分机--tbd
-
-
-    #监听线程----接收数据存入队列
+    #listen and receive message from the PBX
     start_running()
 
-    #删除结束通话
+    #delete the end calls
     start_call_clear()
 
-    #消息处理
     event_message_handle()
 
 
